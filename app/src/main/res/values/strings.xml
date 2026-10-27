@@ -243,7 +243,7 @@
     <string name="st_play_hint">When still: after 10 seconds on the top row; a key stops it. Always: keys do not stop it, and it is shaded a little; it stops when you go down to the apps.</string>
     <string name="ss_show_time">Time</string>
     <string name="ss_show_time_hint">The time over the aerial and photo screensavers. The time and place name move a little now and then, so nothing stays on the same pixels.</string>
-    <string name="alu_room">Living room</string>
+    <string name="alu_room">Night Voyage</string>
     <string name="alu_favorites">Favorites</string>
     <string name="alu_system_tools">System tools</string>
     <string name="alu_all_apps">All apps</string>

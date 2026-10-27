@@ -44,6 +44,10 @@ Personal-only lower-area shading is baked into the existing backdrop, with a tre
 
 The supplied wallpaper is imported only before any wallpaper selection exists. Later choices and deletion are not overwritten. Photo wallpaper has a 100-second rigid pan/zoom cycle using the existing bitmap draw, with enough overscan to cover its edges. It pauses behind apps, menus, the full grid and screensavers. Reduced motion and the existing Lite-effects fallback keep it static. Photo-screensaver Ken Burns and screensaver text drift remain; the personal home clock and shelf fade away rather than duplicating the saver clock.
 
+## Home heading (75 / 1.60-alu.3)
+
+The personal home heading is **夜航 / Night Voyage**. It is a decorative label, not a room name inferred from the device or network. This update only changes that text and the personal version; saved layouts, wallpaper and network choices remain intact.
+
 ## Personal network choices (74 / 1.60-alu.2)
 
 - Weather defaults/migrates from automatic location to Shanghai (31.2222, 121.4581); explicit city choices and the weather switch are preserved. No public-IP lookup or automatic-location button/API. Turning weather off cancels its job and disconnects active weather/geocoder requests. Local city choices still save offline; unknown cities need weather enabled for the remote lookup. Turning it back on refreshes.
