@@ -1,5 +1,6 @@
 package app.orchard.tv.settings
 
+import app.orchard.tv.weather.Weather
 import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -273,6 +274,7 @@ object AerialSettings {
 
     fun chooseShowWeather(on: Boolean) {
         showWeather = on
+        Weather.visibilityChanged()
         app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean("show_weather", on) }
     }
 

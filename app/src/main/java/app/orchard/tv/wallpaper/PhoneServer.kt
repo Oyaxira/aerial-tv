@@ -177,8 +177,11 @@ class PhoneServer private constructor(private val context: Context, private val 
                     json(state().put("found", found))
                 }
                 session.method == Method.POST && path == "/api/weather/auto" -> {
-                    onMain { Weather.useNetworkLocation() }
-                    json(state())
+                    if (app.orchard.tv.BuildConfig.ALU_BUILD) text(Response.Status.FORBIDDEN, "Automatic location disabled")
+                    else {
+                        onMain { Weather.useNetworkLocation() }
+                        json(state())
+                    }
                 }
                 else -> text(Response.Status.NOT_FOUND, "Not found")
             }

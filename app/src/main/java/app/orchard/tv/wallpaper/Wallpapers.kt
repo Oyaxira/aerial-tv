@@ -1,5 +1,8 @@
 package app.orchard.tv.wallpaper
 
+import app.orchard.tv.network.RevocableHttp
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import android.content.Context
 import android.os.Build
 import android.graphics.Bitmap
@@ -148,6 +151,16 @@ object Wallpapers {
 
     private var backdropJob: Job? = null
     private var started = false
+    private var dailyJob: Job? = null
+    internal val personalDailyHttp = RevocableHttp()
+
+    private fun dailyAllowed() = !BuildConfig.ALU_BUILD || selectedId.startsWith("daily:")
+
+    private fun startDailyRefresh() {
+        if (!BuildConfig.ALU_BUILD) { scope.launch { refreshDaily() }; return }
+        if (!dailyAllowed() || dailyJob?.isActive == true) return
+        dailyJob = scope.launch { refreshDaily() }
+    }
 
     /** The UI's size in pixels. Pictures are decoded to it: 1080p on most TVs, 4K where the UI is. */
     var screenW = 1920; private set
@@ -164,7 +177,8 @@ object Wallpapers {
             screenH = (minOf(it.widthPixels, it.heightPixels) * scale).roundToInt()
         }
         if (BuildConfig.ALU_BUILD) AluWallpaper.seed(app)
-        selectedId = (prefs.getString("selected", LATEST_DAILY) ?: LATEST_DAILY)
+        val defaultId = if (BuildConfig.ALU_BUILD) DEFAULT_FALLBACK else LATEST_DAILY
+        selectedId = (prefs.getString("selected", defaultId) ?: defaultId)
             // A built-in wallpaper from before the Mac-style set: its nearest one now.
             .let { if (it.startsWith("grad:")) "grad:" + Gradients.currentKey(it.removePrefix("grad:")) else it }
         chosenScreensaver = when (val key = prefs.getString("screensaver", null)) {
@@ -176,7 +190,8 @@ object Wallpapers {
         rebuildList()
         loadBaked()
         rebuildBackdrop()
-        scope.launch { refreshDaily() }
+        personalDailyHttp.setEnabled(dailyAllowed())
+        startDailyRefresh()
         scope.launch(Dispatchers.IO) { clearStaleUploads() }
         // Installs from before 1.42 have a baked picture but no copy yet.
         scope.launch(Dispatchers.IO) { keepForLockedBoot() }
@@ -199,6 +214,15 @@ object Wallpapers {
     fun select(id: String) {
         selectedId = id
         prefs.edit { putString("selected", id) }
+        if (BuildConfig.ALU_BUILD) {
+            personalDailyHttp.setEnabled(dailyAllowed())
+            if (dailyAllowed()) startDailyRefresh() else {
+                dailyJob?.cancel()
+                dailyJob = null
+                dailyRetry?.cancel()
+                dailyRetry = null
+            }
+        }
         rebuildBackdrop()
     }
 
@@ -439,7 +463,7 @@ object Wallpapers {
             // The last one gone: so is the frame it stopped on.
             videoFrame.delete()
             prefs.edit { remove("video_film").remove("video_at") }
-            if (selectedId == VIDEOS) select(LATEST_DAILY)
+            if (selectedId == VIDEOS) select(if (BuildConfig.ALU_BUILD) DEFAULT_FALLBACK else LATEST_DAILY)
         }
     }
 
@@ -575,12 +599,12 @@ object Wallpapers {
      * else a few minutes later (issue #129).
      */
     fun refreshDailyIfStale(networkCameUp: Boolean = false) {
-        if (!started) return
+        if (!started || !dailyAllowed()) return
         val since = System.currentTimeMillis() - lastDailyRefresh
         val due = since >= 6 * 60 * 60 * 1000L ||
             (dailyFailed && (networkCameUp || since >= 10 * 60 * 1000L)) ||
             (!hasTodaysDaily() && since >= DAILY_RETRY_MS)
-        if (due) scope.launch { refreshDaily() }
+        if (due) startDailyRefresh()
     }
 
     /** Bing's dates are China's, as yyyyMMdd. */
@@ -595,7 +619,7 @@ object Wallpapers {
     /** Looks again in half an hour while today's photo is not out; Home may stay up all night. */
     private fun retryDailyLater() {
         dailyRetry?.cancel()
-        if (hasTodaysDaily()) return
+        if (!dailyAllowed() || hasTodaysDaily()) return
         dailyRetry = scope.launch {
             kotlinx.coroutines.delay(DAILY_RETRY_MS)
             refreshDailyIfStale()
@@ -603,6 +627,8 @@ object Wallpapers {
     }
 
     suspend fun refreshDaily() = io.withLock {
+        if (!dailyAllowed()) return@withLock
+        currentCoroutineContext().ensureActive()
         lastDailyRefresh = System.currentTimeMillis()
         val added = withContext(Dispatchers.IO) {
             runCatching {
@@ -648,7 +674,9 @@ object Wallpapers {
         }
     }
 
-    private fun get(url: String): ByteArray {
+    private suspend fun get(url: String): ByteArray {
+        currentCoroutineContext().ensureActive()
+        if (BuildConfig.ALU_BUILD) return personalDailyHttp.read(url, 10_000, 20_000)
         val c = URL(url).openConnection() as HttpURLConnection
         c.connectTimeout = 10_000
         c.readTimeout = 20_000
@@ -692,7 +720,7 @@ object Wallpapers {
         fileFor(photo)?.delete()
         synchronized(thumbs) { thumbs.remove(id); thumbs.remove(ROTATE_PHOTOS) }
         rebuildList()
-        if (selectedId == id) select(LATEST_DAILY)
+        if (selectedId == id) select(if (BuildConfig.ALU_BUILD) DEFAULT_FALLBACK else LATEST_DAILY)
         else if (selectedId == ROTATE_PHOTOS) rebuildBackdrop()
     }
 }

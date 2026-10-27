@@ -1,5 +1,10 @@
 package app.orchard.tv.weather
 
+import app.orchard.tv.BuildConfig
+import app.orchard.tv.network.RevocableHttp
+import app.orchard.tv.settings.AerialSettings
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
@@ -60,12 +65,36 @@ object Weather {
     private var started = false
     private var lastAttempt = 0L
     private var job: Job? = null
+    internal val personalHttp = RevocableHttp()
+
+    private fun networkingAllowed() = !BuildConfig.ALU_BUILD || AerialSettings.showWeather
+
+    /** The display switch also revokes weather and geocoder connections in the personal build. */
+    fun visibilityChanged() {
+        if (!BuildConfig.ALU_BUILD) return
+        personalHttp.setEnabled(AerialSettings.showWeather)
+        if (!AerialSettings.showWeather) {
+            job?.cancel()
+            lastAttempt = 0L
+        } else if (started) refresh()
+    }
 
     fun init(context: Context) {
         if (started) return
         started = true
         app = context.applicationContext
         prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (BuildConfig.ALU_BUILD) {
+            AerialSettings.init(app)
+            personalHttp.setEnabled(AerialSettings.showWeather)
+            // Old automatic guesses are not an explicit city choice. Migrate once, even offline.
+            if (!prefs.getBoolean("chosen", false)) prefs.edit {
+                putFloat("lat", 31.2222f); putFloat("lon", 121.4581f)
+                putString("place", if (Locale.getDefault().language == "zh") "上海" else "Shanghai")
+                putBoolean("chosen", true)
+                putBoolean("checked_against_cities", true)
+            }
+        }
         place = prefs.getString("place", null)
         chosen = prefs.getBoolean("chosen", false)
         if (System.currentTimeMillis() - prefs.getLong("fetched_at", 0) < STALE_MS) {
@@ -82,12 +111,13 @@ object Weather {
 
     /** Like the daily photos: a failed reading is retried when the network connects (issue #129). */
     fun refreshIfStale(networkCameUp: Boolean = false) {
-        if (!started) return
+        if (!started || !networkingAllowed()) return
         val since = System.currentTimeMillis() - lastAttempt
         if (since >= REFRESH_MS || (failed && (networkCameUp || since >= RETRY_MS))) refresh()
     }
 
     private fun refresh() {
+        if (!networkingAllowed()) return
         lastAttempt = System.currentTimeMillis()
         job?.cancel()
         job = scope.launch {
@@ -111,14 +141,14 @@ object Weather {
     }
 
     /** Off the main thread. */
-    private fun fetch(): WeatherNow {
+    private suspend fun fetch(): WeatherNow {
         var lat = prefs.getFloat("lat", Float.NaN)
         var lon = prefs.getFloat("lon", Float.NaN)
         val guessedLongAgo = System.currentTimeMillis() - prefs.getLong("located_at", 0) > RELOCATE_MS
         if (prefs.getBoolean("chosen", false) && !lat.isNaN() && !prefs.getBoolean("checked_against_cities", false)) {
             correctChosenPlace(lat, lon)?.let { lat = it.lat.toFloat(); lon = it.lon.toFloat() }
         }
-        if (!prefs.getBoolean("chosen", false) && (lat.isNaN() || guessedLongAgo)) {
+        if (!BuildConfig.ALU_BUILD && !prefs.getBoolean("chosen", false) && (lat.isNaN() || guessedLongAgo)) {
             // ipinfo.io: no key, and its "loc" is "lat,lon".
             val ip = JSONObject(get("https://ipinfo.io/json"))
             val loc = ip.getString("loc").split(',')
@@ -200,6 +230,7 @@ object Weather {
 
     /** Back to guessing the place from the network. */
     fun useNetworkLocation() {
+        if (BuildConfig.ALU_BUILD) return
         prefs.edit { putBoolean("chosen", false); remove("lat"); remove("lon"); remove("located_at") }
         chosen = false
         refresh()
@@ -220,10 +251,14 @@ object Weather {
      * Android before 7.1 does not trust the Let's Encrypt root these hosts use; they answer the
      * same over plain HTTP (allowed for them in network_security_config.xml).
      */
-    private fun get(url: String): String = try {
-        read(url)
-    } catch (e: SSLException) {
-        read(url.replaceFirst("https://", "http://"))
+    private suspend fun get(url: String): String {
+        currentCoroutineContext().ensureActive()
+        if (BuildConfig.ALU_BUILD) return personalHttp.read(url, 8_000, 10_000).decodeToString()
+        return try {
+            read(url)
+        } catch (e: SSLException) {
+            read(url.replaceFirst("https://", "http://"))
+        }
     }
 
     private fun read(url: String): String {

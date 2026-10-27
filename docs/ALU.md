@@ -20,7 +20,8 @@ fi
 ./gradlew --gradle-user-home "$ALU_GRADLE_HOME" --no-daemon --no-configuration-cache \
   -PaluBuild=true :app:assembleStandardRelease \
   :app:testStandardReleaseUnitTest \
-  --tests '*AluHomeTest' --tests '*AluWallpaperTest' --tests '*AluCameraTest'
+  --tests '*AluHomeTest' --tests '*AluWallpaperTest' --tests '*AluCameraTest' --tests '*AluPrivacyTest'
+node tools/test-alu-privacy-web.cjs
 ```
 
 Output: `app/build/outputs/apk/standard/release/app-standard-release-unsigned.apk`.
@@ -43,6 +44,15 @@ Personal-only lower-area shading is baked into the existing backdrop, with a tre
 
 The supplied wallpaper is imported only before any wallpaper selection exists. Later choices and deletion are not overwritten. Photo wallpaper has a 100-second rigid pan/zoom cycle using the existing bitmap draw, with enough overscan to cover its edges. It pauses behind apps, menus, the full grid and screensavers. Reduced motion and the existing Lite-effects fallback keep it static. Photo-screensaver Ken Burns and screensaver text drift remain; the personal home clock and shelf fade away rather than duplicating the saver clock.
 
+## Personal network choices (74 / 1.60-alu.2)
+
+- Weather defaults/migrates from automatic location to Shanghai (31.2222, 121.4581); explicit city choices and the weather switch are preserved. No public-IP lookup or automatic-location button/API. Turning weather off cancels its job and disconnects active weather/geocoder requests. Local city choices still save offline; unknown cities need weather enabled for the remote lookup. Turning it back on refreshes.
+- Bing is fetched only with an explicit `daily:latest` or dated daily wallpaper selection. Local startup, photo/clock fallback and switching away do not authorize downloads; switching away cancels daily work and retries without clearing caches. Empty-cache TV and phone pickers still offer Daily. Deleting the selected photo or last selected video falls back to a builtin rather than opting into Bing.
+- Personal outbound clients use HTTPS, with no weather or Apple HTTP downgrade. The strict manifest configuration retains Apple's CA trust; the inbound phone server remains on 8791. Weather/Bing redirects fail closed. Older TVs with unsupported TLS may therefore show no fresh weather/video instead of silently downgrading.
+- Ordinary builds and Lite keep their existing policies. The personal APK remains unsigned and private.
+
 ## Validation boundary
+
+Privacy tests exercise the real Weather/Wallpapers objects with fake URLConnections at the request boundary (no live cloud traffic): migration, visibility cancellation/resume, city lookup, daily opt-in/cancellation/retries, TLS failure and cleartext/redirect rejection. The Node test runs the shipped phone renderers against a tiny DOM. These are not packet captures or real-TV/network verification.
 
 Unit tests cover default placement, accessibility of every listed app, persistence after editing, temporary package loss, shelf projection, incomplete-row navigation, first-use wallpaper preservation, and camera edge coverage/seam continuity. Compilation and tests do not establish real-TV focus, readability or performance. Check those on the optimized, separately signed release before treating the experience as accepted.

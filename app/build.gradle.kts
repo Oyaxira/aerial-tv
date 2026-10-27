@@ -21,9 +21,9 @@ android {
         // Android 5.0. Compose 1.10 and later need 6.0, so the Compose BOM below stays on 1.9.
         minSdk = 21
         targetSdk = 34
-        versionCode = 73
+        versionCode = if (aluBuild) 74 else 73
         versionName = "1.60"
-        if (aluBuild) versionNameSuffix = "-alu"
+        if (aluBuild) versionNameSuffix = "-alu.2"
         // `./gradlew -Pdiag ...`: a build for one reporter's TV whose logcat shows no app lines;
         // see system/DiagLog.kt.
         val diag = project.hasProperty("diag")
@@ -71,6 +71,7 @@ android {
     if (aluBuild) {
         // Never consult a signing key in the personal build, including debug variants.
         buildTypes.getByName("debug").signingConfig = null
+        listOf("debug", "release").forEach { sourceSets.getByName(it).manifest.srcFile("src/alu/AndroidManifest.xml") }
         sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/aluAssets"))
     }
 

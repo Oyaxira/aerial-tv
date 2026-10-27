@@ -1,5 +1,7 @@
 package app.orchard.tv.ui.home
 
+import app.orchard.tv.BuildConfig
+
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.os.Build
@@ -145,7 +147,7 @@ fun LiveWallpaper(
 
     fun open(): ExoPlayer {
         val quality = AerialFormats.forWallpaper(context)
-        val overHttp = Build.VERSION.SDK_INT < Build.VERSION_CODES.N
+        val overHttp = !BuildConfig.ALU_BUILD && Build.VERSION.SDK_INT < Build.VERSION_CODES.N
         val all = Aerials.all(context).shuffled()
         // The film the picture on screen came from, at that moment; else one fetched ahead.
         val spot = Wallpapers.liveSpot()
@@ -542,7 +544,7 @@ private class FrameReader(private val context: android.content.Context) {
         if (openFor == id) retriever?.let { return it }
         close0()
         val film = Aerials.all(context).firstOrNull { it.id == id } ?: return null
-        val url = AerialStream.url(film, AerialQuality.Hd, Build.VERSION.SDK_INT < Build.VERSION_CODES.N)
+        val url = AerialStream.url(film, AerialQuality.Hd, !BuildConfig.ALU_BUILD && Build.VERSION.SDK_INT < Build.VERSION_CODES.N)
         val started = android.os.SystemClock.elapsedRealtime()
         val mmr = open(url, ranged = urlRefused) ?: run {
             // TCL x32a0 (Android 9): the retriever fails at once on Apple's https address that
@@ -622,6 +624,7 @@ private class RangedHttpSource(private val url: String) : android.media.MediaDat
         try {
             c.connectTimeout = 8_000
             c.readTimeout = 8_000
+            if (BuildConfig.ALU_BUILD) c.instanceFollowRedirects = false
             c.setRequestProperty("Range", "bytes=${index * BLOCK}-${(index + 1) * BLOCK - 1}")
             if (c.responseCode != 206) throw java.io.IOException("HTTP ${c.responseCode}")
             val total = c.getHeaderField("Content-Range")?.substringAfterLast('/')?.toLongOrNull()

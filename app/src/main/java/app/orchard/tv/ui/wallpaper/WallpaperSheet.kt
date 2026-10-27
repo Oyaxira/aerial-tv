@@ -345,7 +345,7 @@ private fun WallpaperRows() {
     val list = remember(items, selected, dailyTitle, rotateTitle) {
         buildList {
             addAll(items.filter { it.kind == WallpaperKind.Live || it.kind == WallpaperKind.Video })
-            if (items.any { it.kind == WallpaperKind.Daily }) add(Wallpaper(Wallpapers.LATEST_DAILY, WallpaperKind.Daily, dailyTitle))
+            if (BuildConfig.ALU_BUILD || items.any { it.kind == WallpaperKind.Daily }) add(Wallpaper(Wallpapers.LATEST_DAILY, WallpaperKind.Daily, dailyTitle))
             addAll(items.filter { it.kind == WallpaperKind.Daily && it.id == selected })
             val photos = items.filter { it.kind == WallpaperKind.Photo }
             // With two or more, one card takes turns through all of them, one a day (#27).

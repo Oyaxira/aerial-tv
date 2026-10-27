@@ -306,7 +306,7 @@ internal val SaverClockSide = 56.dp
  * minute (34 s on TCL 75S365C). Those versions start on HTTP. From 7.0 on this is set for the rest of
  * the process once a film fails over HTTPS.
  */
-private var aerialsOverHttp by mutableStateOf(Build.VERSION.SDK_INT < Build.VERSION_CODES.N)
+private var aerialsOverHttp by mutableStateOf(!BuildConfig.ALU_BUILD && Build.VERSION.SDK_INT < Build.VERSION_CODES.N)
 
 /**
  * The quality a decoder gave up on, for the rest of the process: the screensaver then starts one
@@ -404,7 +404,7 @@ private fun AerialSaver(
                 // Apple's video host chains to Apple Root CA, which Android does not ship. From 7.0 on
                 // network_security_config trusts it for this host; 5.0 and 6.0 ignore that file and
                 // start on HTTP. The same files are served over plain HTTP; try that before giving up.
-                if (!aerialsOverHttp) {
+                if (!BuildConfig.ALU_BUILD && !aerialsOverHttp) {
                     aerialsOverHttp = true
                     load(player.currentMediaItemIndex)
                 } else {

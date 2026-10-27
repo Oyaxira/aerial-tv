@@ -1,5 +1,6 @@
 package app.orchard.tv.wallpaper
 
+import app.orchard.tv.BuildConfig
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
@@ -67,9 +68,15 @@ object AerialStream {
     private fun http() = DefaultHttpDataSource.Factory()
         .setConnectTimeoutMs(5_000)
         .setReadTimeoutMs(8_000)
+        .apply { if (BuildConfig.ALU_BUILD) setAllowCrossProtocolRedirects(false) }
 
     fun url(film: Aerial, quality: AerialQuality, overHttp: Boolean): String =
-        film.url(quality).let { if (overHttp) it.replaceFirst("https://", "http://") else it }
+        film.url(quality).let {
+            if (BuildConfig.ALU_BUILD) {
+                require(it.startsWith("https://")) { "Personal aerials require HTTPS" }
+                it
+            } else if (overHttp) it.replaceFirst("https://", "http://") else it
+        }
 
     /** Keyed by film and quality, not address, so the cached opener serves HTTP and HTTPS alike. */
     private fun key(film: Aerial, quality: AerialQuality) = "${film.id}@${quality.key}"

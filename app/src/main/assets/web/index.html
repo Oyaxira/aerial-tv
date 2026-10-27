@@ -1296,7 +1296,7 @@ function renderWallpapers() {
   for (const [kind, title, sub] of groups) {
     // Moving: the aerial films and the owner's videos.
     let list = state.wallpapers.filter(w => w.kind === kind || (kind === 'live' && w.kind === 'video'));
-    if (kind === 'daily' && list.length) list = [{ id: state.latestDaily, kind: 'daily', title: t('daily_title'), caption: t('daily_caption') }, ...list];
+    if (kind === 'daily' && (list.length || state.fixedHome)) list = [{ id: state.latestDaily, kind: 'daily', title: t('daily_title'), caption: t('daily_caption') }, ...list];
     // Two or more photos: one a day, as on the TV (#27, #194).
     if (kind === 'photo' && list.length > 1) list = [{ id: state.rotatePhotos, kind: 'photos', title: t('rotate_title'), caption: t('rotate_caption') }, ...list];
     if (!list.length && kind !== 'photo') continue;
@@ -1422,9 +1422,11 @@ function renderMore() {
   const hint = $('#wxHint'); hint.replaceChildren();
   if (w.chosen) {
     hint.append(t('wx_chosen', { place: w.place }) + ' ');
-    const b = el('button', 'link', t('wx_auto_btn'));
-    b.onclick = async () => { try { take(await api('api/weather/auto', {})); toast(t('toast_auto')); } catch (e) { toast(t('toast_set_fail')); } };
-    hint.append(b);
+    if (!state.fixedHome) {
+      const b = el('button', 'link', t('wx_auto_btn'));
+      b.onclick = async () => { try { take(await api('api/weather/auto', {})); toast(t('toast_auto')); } catch (e) { toast(t('toast_set_fail')); } };
+      hint.append(b);
+    }
   } else hint.textContent = w.place ? t('wx_guessed', { place: w.place }) : t('wx_none');
 }
 function renderInputs() {
