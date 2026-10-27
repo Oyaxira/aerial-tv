@@ -14,4 +14,5 @@ dependencyResolutionManagement {
 }
 rootProject.name = "Aerial"
 include(":app")
-include(":lite")
+// Lite has its own signing setup; personal builds must not even configure it.
+if (providers.gradleProperty("aluBuild").orNull != "true") include(":lite")

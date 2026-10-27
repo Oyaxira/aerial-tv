@@ -68,6 +68,7 @@ object Updates {
     private var lastAttempt = 0L
 
     fun init(context: Context) {
+        if (BuildConfig.ALU_BUILD) return
         if (started) return
         started = true
         prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -84,7 +85,7 @@ object Updates {
      * release out an hour ago was not shown there for hours more (issue #301).
      */
     fun checkIfStale(force: Boolean = false, maxAgeMs: Long = CHECK_EVERY_MS) {
-        if (!started) return
+        if (BuildConfig.ALU_BUILD || !started) return
         val now = System.currentTimeMillis()
         if (!force && (now - lastAttempt < RETRY_MS || now - prefs.getLong("checked_at", 0) < maxAgeMs)) return
         lastAttempt = now
@@ -151,7 +152,7 @@ object Updates {
     private const val PACKAGE = "app.orchard.tv"
 
     /** Whether this copy can update itself from the release at all. */
-    fun canInstall(context: Context): Boolean = context.packageName == PACKAGE
+    fun canInstall(context: Context): Boolean = !BuildConfig.ALU_BUILD && context.packageName == PACKAGE
 
     /**
      * Downloads this flavor's APK of the latest release and opens the system installer on it.

@@ -59,6 +59,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import app.orchard.tv.BuildConfig
 import app.orchard.tv.R
 import app.orchard.tv.settings.AerialSettings
 import app.orchard.tv.settings.FocusStyle
@@ -163,29 +164,31 @@ fun WallpaperSheet(
                     SectionTitle(R.string.st_home_layout)
                     // What is on Home and where; then the clock; then how the remote feels.
                     Group { note ->
-                        Choices(
-                            R.string.st_layout, stringResource(R.string.st_home_layout_hint), note,
-                            listOf(true to R.string.st_home_one_row, false to R.string.st_home_standard),
-                            AerialSettings.oneRowHome, AerialSettings::chooseOneRowHome, first = true,
-                        )
-                        // Two rows show the second row whole; only one row has a peek to hide.
-                        if (AerialSettings.oneRowHome) Choices(
-                            R.string.st_peek, stringResource(R.string.st_peek_hint), note,
-                            listOf(true to R.string.st_peek_show, false to R.string.st_peek_hide),
-                            AerialSettings.peekNextRow, AerialSettings::choosePeekNextRow,
-                        )
-                        Choices(
-                            R.string.st_plate, stringResource(R.string.st_plate_hint), note,
-                            listOf(true to R.string.st_plate_glass, false to R.string.st_plate_none),
-                            AerialSettings.homePlate, AerialSettings::chooseHomePlate,
-                        )
-                        Choices(
-                            R.string.st_names, stringResource(R.string.st_names_hint), note,
-                            listOf(false to R.string.st_names_focused, true to R.string.st_names_all),
-                            AerialSettings.showAllNames, AerialSettings::chooseShowAllNames,
-                        )
+                        if (!BuildConfig.ALU_BUILD) {
+                            Choices(
+                                R.string.st_layout, stringResource(R.string.st_home_layout_hint), note,
+                                listOf(true to R.string.st_home_one_row, false to R.string.st_home_standard),
+                                AerialSettings.oneRowHome, AerialSettings::chooseOneRowHome, first = true,
+                            )
+                            // Two rows show the second row whole; only one row has a peek to hide.
+                            if (AerialSettings.oneRowHome) Choices(
+                                R.string.st_peek, stringResource(R.string.st_peek_hint), note,
+                                listOf(true to R.string.st_peek_show, false to R.string.st_peek_hide),
+                                AerialSettings.peekNextRow, AerialSettings::choosePeekNextRow,
+                            )
+                            Choices(
+                                R.string.st_plate, stringResource(R.string.st_plate_hint), note,
+                                listOf(true to R.string.st_plate_glass, false to R.string.st_plate_none),
+                                AerialSettings.homePlate, AerialSettings::chooseHomePlate,
+                            )
+                            Choices(
+                                R.string.st_names, stringResource(R.string.st_names_hint), note,
+                                listOf(false to R.string.st_names_focused, true to R.string.st_names_all),
+                                AerialSettings.showAllNames, AerialSettings::chooseShowAllNames,
+                            )
+                        }
                         // Apps taken off Home are kept with the rest of how Home looks.
-                        SettingRow(R.string.st_hidden_apps, stringResource(R.string.st_hidden_apps_hint), note) {
+                        SettingRow(R.string.st_hidden_apps, stringResource(R.string.st_hidden_apps_hint), note, first = BuildConfig.ALU_BUILD) {
                             ActionChip(
                                 if (hiddenCount == 0) stringResource(R.string.st_hidden_none) else stringResource(R.string.st_hidden_count, hiddenCount),
                                 Glyph.ChevronRight,
@@ -195,25 +198,27 @@ fun WallpaperSheet(
                     }
                     Spacer(Modifier.height(10.dp))
                     Group { note ->
-                        Choices(
-                            R.string.st_clock, stringResource(R.string.st_clock_hint), note,
-                            listOf(false to R.string.st_clock_left, true to R.string.st_clock_right),
-                            AerialSettings.clockRight, AerialSettings::chooseClockRight, first = true,
-                        )
-                        Choices(
-                            R.string.st_clock_size, stringResource(R.string.st_clock_size_hint), note,
-                            listOf(false to R.string.st_clock_small, true to R.string.st_clock_large),
-                            AerialSettings.largeClock, AerialSettings::chooseLargeClock,
-                        )
+                        if (!BuildConfig.ALU_BUILD) {
+                            Choices(
+                                R.string.st_clock, stringResource(R.string.st_clock_hint), note,
+                                listOf(false to R.string.st_clock_left, true to R.string.st_clock_right),
+                                AerialSettings.clockRight, AerialSettings::chooseClockRight, first = true,
+                            )
+                            Choices(
+                                R.string.st_clock_size, stringResource(R.string.st_clock_size_hint), note,
+                                listOf(false to R.string.st_clock_small, true to R.string.st_clock_large),
+                                AerialSettings.largeClock, AerialSettings::chooseLargeClock,
+                            )
+                        }
                         Choices(
                             R.string.wp_weather, null, note,
                             listOf(true to R.string.st_on, false to R.string.st_off),
-                            AerialSettings.showWeather, AerialSettings::chooseShowWeather,
+                            AerialSettings.showWeather, AerialSettings::chooseShowWeather, first = BuildConfig.ALU_BUILD,
                         )
                     }
                     Spacer(Modifier.height(10.dp))
                     Group { note ->
-                        Choices(
+                        if (!BuildConfig.ALU_BUILD) Choices(
                             R.string.st_focus_style,
                             stringResource(if (AerialSettings.focusStyle == FocusStyle.HighContrast) R.string.st_focus_high_hint else R.string.st_focus_standard_hint),
                             note,
@@ -225,7 +230,7 @@ fun WallpaperSheet(
                             stringResource(if (AerialSettings.uiSounds == UiSounds.Tv) R.string.st_sounds_tv_hint else R.string.st_sounds_hint),
                             note,
                             listOf(UiSounds.Tv to R.string.st_sounds_tv, UiSounds.Aerial to R.string.st_sounds_aerial, UiSounds.Off to R.string.st_off),
-                            AerialSettings.uiSounds, { AerialSettings.chooseUiSounds(it); Sounds.prepare() },
+                            AerialSettings.uiSounds, { AerialSettings.chooseUiSounds(it); Sounds.prepare() }, first = BuildConfig.ALU_BUILD,
                         )
                         Choices(
                             R.string.st_effects,

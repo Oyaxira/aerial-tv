@@ -65,6 +65,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.LocalContext
@@ -82,6 +83,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import app.orchard.tv.BuildConfig
+import androidx.compose.ui.unit.sp
 import app.orchard.tv.R
 import app.orchard.tv.settings.AerialSettings
 import app.orchard.tv.wallpaper.Images
@@ -239,7 +242,22 @@ fun HomeBackground(
     glassAwaitsStop: Boolean = false,
     /** The grid's own glass, where it is not the picture's ([frosted]): the aerial film's (Wallpapers.clipGlass). */
     gridGlass: ImageBitmap? = null,
+    /** Personal photo wallpaper only; sampled in draw, never moves or recomposes the UI. */
+    photoPhase: () -> Float? = { null },
+    personalGrid: Boolean = false,
 ) {
+    if (personalGrid) {
+        // The same quiet backdrop from entry through the last row, independent of shelf scroll.
+        // Reuse the existing small frosted bitmap and bake its dimming once, not on every frame.
+        val source = gridGlass ?: frosted
+        val subdued = remember(source) { source?.let { darkened(it, GRID_SHADE) } }
+        Canvas(Modifier.fillMaxSize()) {
+            val image = subdued
+            if (image == null) drawRect(Color(0xFF101923))
+            else drawImage(image, dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()), filterQuality = FilterQuality.Low)
+        }
+        return
+    }
     Box(Modifier.fillMaxSize()) {
         // Over a paused film, under the pictures: the shading its picture will have. The picture
         // fades in over it as the film gives way, so the screen keeps the same light throughout.
@@ -250,7 +268,7 @@ fun HomeBackground(
             drawRect(Brush.verticalGradient(*Images.SHADE_AT.indices.map { Images.SHADE_AT[it] to Color.Black.copy(alpha = Images.SHADE[it]) }.toTypedArray()), alpha = stopped)
             drawRect(Brush.horizontalGradient(0f to Color.Black.copy(alpha = Images.SHADE_LEFT), 1f to Color.Transparent, endX = size.width / 2), alpha = stopped)
         }
-        Pictures(backdrop, gridGlass ?: frosted, filmGlass.takeIf { glassAwaitsStop }, wallpaper, scroll, collapse, cover, filmStopped)
+        Pictures(backdrop, gridGlass ?: frosted, filmGlass.takeIf { glassAwaitsStop }, wallpaper, scroll, collapse, cover, filmStopped, photoPhase)
         if (saverImage != null) Canvas(Modifier.fillMaxSize()) {
             val a = saverReveal()
             if (a > 0.01f) drawDrawingIn(saverImage, saverPush(), a)
@@ -280,6 +298,7 @@ private fun Pictures(
     collapse: Float,
     cover: () -> Float,
     filmStopped: () -> Float,
+    photoPhase: () -> Float?,
 ) {
     fun gridGlass(): Float = (((scroll() / collapse).coerceIn(0f, 1f) - 0.3f) / 0.4f).coerceIn(0f, 1f)
     fun moving(): Boolean = filmGlass != null && cover() > 0.01f && filmStopped() < 0.99f
@@ -310,7 +329,17 @@ private fun Pictures(
             // The sharp picture and the grid's glass cross only through the middle of the
             // scroll; each end is one full-screen draw.
             val g = gridGlass()
-            if (g < 0.99f && film < 0.99f) drawImage(bmp, dstSize = full, filterQuality = FilterQuality.Low, alpha = 1f - film)
+            if (g < 0.99f && film < 0.99f) {
+                val pose = photoPhase()?.let(AluCamera::pose)
+                if (pose == null) drawImage(bmp, dstSize = full, filterQuality = FilterQuality.Low, alpha = 1f - film)
+                else withTransform({
+                    translate(size.width * pose.x, size.height * pose.y)
+                    scale(pose.scale, pose.scale, center)
+                }) {
+                    // One existing bitmap draw: no second wallpaper surface or per-frame blur.
+                    drawImage(bmp, dstSize = full, filterQuality = FilterQuality.Low, alpha = 1f - film)
+                }
+            }
             if (own != null && g > 0.01f) drawImage(own, dstSize = full, filterQuality = FilterQuality.Low, alpha = g)
         }
     }
@@ -759,6 +788,25 @@ private fun glyphFor(w: WeatherNow): Glyph = when (w.kind) {
  * where Up from the top row leads, and it opens Control Center.
  */
 @Composable
+internal fun AluClock(now: LocalDateTime, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        BasicText(stringResource(R.string.alu_room), style = Type.Body.copy(fontSize = 12.5.sp, color = Color.White.copy(alpha = 0.84f)))
+        BasicText(timeText(now), style = Type.Clock.copy(fontSize = 68.sp, fontWeight = FontWeight.Light),
+            modifier = Modifier.padding(top = 10.dp))
+        Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            BasicText(dateText(now), style = Type.Body.copy(fontSize = 13.5.sp))
+            Weather.now?.takeIf { AerialSettings.showWeather }?.let { weather ->
+                BasicText("|", style = Type.Body.copy(color = Color.White.copy(alpha = 0.3f)))
+                GlyphIcon(glyphFor(weather), Color.White, 16.dp)
+                BasicText(listOfNotNull(Weather.place, "${weather.celsius}°").joinToString(" "),
+                    style = Type.Body.copy(fontSize = 13.5.sp))
+            }
+        }
+    }
+}
+
+@Composable
 fun StatusPill(
     now: LocalDateTime,
     network: NetworkStatus,
@@ -778,7 +826,7 @@ fun StatusPill(
     ) { state ->
         LaunchedEffect(state.focused) { onFocused(state.focused) }
         val bg by animateColorAsState(
-            if (state.focused) Palette.Focus else Color.Transparent,
+            if (state.focused) Palette.Focus else if (BuildConfig.ALU_BUILD) Color(0xFF071322).copy(alpha = 0.6f) else Color.Transparent,
             tween(160, easing = Motion.EaseOut), label = "pill-bg",
         )
         val fg = if (state.focused) Palette.OnFocus else Color.White.copy(alpha = 0.9f)
@@ -797,10 +845,15 @@ fun StatusPill(
                 NetKind.Offline -> Glyph.Offline
             }
             GlyphIcon(glyph, fg, 17.dp, level = network.level)
+            if (BuildConfig.ALU_BUILD && !showTime) {
+                BasicText(stringResource(if (network.kind == NetKind.Offline) R.string.alu_offline else R.string.alu_connected),
+                    style = Type.Caption.copy(color = fg))
+            }
             if (showTime) {
                 BasicText(timeText(now), style = Type.Headline.copy(color = fg))
             }
-            GlyphIcon(Glyph.Switches, fg, 17.dp)
+            GlyphIcon(if (BuildConfig.ALU_BUILD) Glyph.Gear else Glyph.Switches, fg, 17.dp)
+            if (BuildConfig.ALU_BUILD) BasicText(stringResource(R.string.alu_settings), style = Type.Caption.copy(color = fg))
         }
     }
 }

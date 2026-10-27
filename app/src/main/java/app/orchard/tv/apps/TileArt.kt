@@ -76,6 +76,20 @@ enum class SystemTile(top: Long, bottom: Long, val glyph: Glyph) {
 }
 
 object TileArtFactory {
+    /** Original app artwork, aspect-fitted without recoloring, banner recipes or online replacements. */
+    fun originalIcon(drawable: Drawable): TileArt {
+        val bitmap = createBitmap(216, 216)
+        val w = drawable.intrinsicWidth.coerceAtLeast(1)
+        val h = drawable.intrinsicHeight.coerceAtLeast(1)
+        val scale = 216f / maxOf(w, h)
+        val dw = (w * scale).roundToInt().coerceAtLeast(1)
+        val dh = (h * scale).roundToInt().coerceAtLeast(1)
+        drawable.setBounds((216 - dw) / 2, (216 - dh) / 2, (216 + dw) / 2, (216 + dh) / 2)
+        drawable.draw(Canvas(bitmap))
+        val image = bitmap.asImageBitmap()
+        return TileArt(image, null, androidx.compose.ui.geometry.Rect.Zero, Color.DarkGray, image)
+    }
+
     /**
      * Pixel size of the artwork: the tile at its focused size on this screen, so the lifted tile is
      * still pixel-sharp. 352×198 on a 1080p UI, twice that on a TV that draws its UI at 4K.

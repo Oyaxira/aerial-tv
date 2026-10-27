@@ -93,7 +93,7 @@ fun FolderView(
                     modifier = Modifier.padding(bottom = 36.dp),
                 )
                 shownApps.chunked(columns).forEach { row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(28.dp), modifier = Modifier.padding(bottom = 50.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(if (app.orchard.tv.BuildConfig.ALU_BUILD) 16.dp else 28.dp), modifier = Modifier.padding(bottom = 50.dp)) {
                         row.forEach { app ->
                             AppTile(
                                 app = app,

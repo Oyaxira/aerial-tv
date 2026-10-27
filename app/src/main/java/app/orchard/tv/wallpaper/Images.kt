@@ -50,7 +50,11 @@ object Images {
     val SHADE_AT = floatArrayOf(0f, 0.3f, 0.66f, 1f)
     const val SHADE_LEFT = 0.2f
 
-    fun shadeForHome(b: Bitmap): Bitmap {
+    // The personal shelf has no glass plate: darken the book/table behind its labels, not the face.
+    private val PERSONAL_SHADE = floatArrayOf(0.12f, 0.04f, 0.15f, 0.43f, 0.73f, 0.82f)
+    private val PERSONAL_SHADE_AT = floatArrayOf(0f, 0.3f, 0.52f, 0.68f, 0.84f, 1f)
+
+    fun shadeForHome(b: Bitmap, personal: Boolean = false): Bitmap {
         val out = if (b.isMutable) b else b.copy(Bitmap.Config.ARGB_8888, true)
         val c = Canvas(out)
         val w = out.width.toFloat()
@@ -58,8 +62,8 @@ object Images {
         c.drawRect(0f, 0f, w, h, Paint().apply {
             shader = LinearGradient(
                 0f, 0f, 0f, h,
-                SHADE.map(::black).toIntArray(),
-                SHADE_AT, Shader.TileMode.CLAMP,
+                (if (personal) PERSONAL_SHADE else SHADE).map(::black).toIntArray(),
+                if (personal) PERSONAL_SHADE_AT else SHADE_AT, Shader.TileMode.CLAMP,
             )
         })
         c.drawRect(0f, 0f, w, h, Paint().apply {

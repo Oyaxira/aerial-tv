@@ -80,6 +80,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.createBitmap
+import app.orchard.tv.BuildConfig
 import app.orchard.tv.apps.AppEntry
 import app.orchard.tv.apps.TileArt
 import kotlinx.coroutines.async
@@ -160,6 +161,10 @@ fun AppTile(
     /** The name sits on the glass plate, which ends just under it: it does not step down past the focus frame. */
     nameOnPlate: Boolean = false,
 ) {
+    if (BuildConfig.ALU_BUILD) {
+        AluAppTile(app, width, height, focusRequester, enabled, moving, onFocused, onClick, onLongPress, modifier, rowEnd)
+        return
+    }
     val reduced = LocalReducedMotion.current
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current

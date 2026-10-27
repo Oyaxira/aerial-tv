@@ -8,6 +8,7 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.util.Log
 import app.orchard.tv.R
+import app.orchard.tv.BuildConfig
 import app.orchard.tv.guard.HomeGuardService
 import app.orchard.tv.system.TvSource
 import androidx.compose.ui.graphics.asImageBitmap
@@ -383,7 +384,8 @@ object AppCatalog {
     fun ownArt(context: Context, entry: AppEntry): TileArt? = runCatching {
         val pm = context.packageManager
         val info = pm.getActivityInfo(entry.component, 0)
-        fromApp(pm, info, banner(pm, info, entry.leanback), TileRecipes.of(entry.packageName))
+        if (BuildConfig.ALU_BUILD) TileArtFactory.originalIcon(densest(pm, info, info.iconResource) ?: info.loadIcon(pm))
+        else fromApp(pm, info, banner(pm, info, entry.leanback), TileRecipes.of(entry.packageName))
     }.getOrNull()
 
     private fun entry(
@@ -391,6 +393,22 @@ object AppCatalog {
         stockHome: Boolean = false, later: Boolean = false,
     ): AppEntry {
         val pkg = info.packageName
+        if (BuildConfig.ALU_BUILD) {
+            val stamp = runCatching { pm.getPackageInfo(pkg, 0).lastUpdateTime }.getOrDefault(0L) + CustomIcons.stamp(pkg)
+            val made = synchronized(cache) { cache[pkg] }?.takeIf { it.stamp == stamp } ?: run {
+                val label = runCatching { info.loadLabel(pm).toString().trim() }.getOrDefault(pkg)
+                val custom = CustomIcons.load(pkg)
+                val icon = if (custom != null) android.graphics.drawable.BitmapDrawable(android.content.res.Resources.getSystem(), custom)
+                    else runCatching { densest(pm, info, info.iconResource) ?: info.loadIcon(pm) }.getOrDefault(pm.defaultActivityIcon)
+                val art = runCatching { TileArtFactory.originalIcon(icon) }
+                    .getOrElse { TileArtFactory.originalIcon(pm.defaultActivityIcon) }
+                Cached(stamp, TileArtFactory.W, label, art).also {
+                    synchronized(cache) { cache[pkg] = it }
+                }
+            }
+            return AppEntry(pkg, made.label, ComponentName(pkg, info.name), leanback,
+                (info.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM) == 0, made.art)
+        }
         // A picture chosen on the phone page changes the tile as much as an update does.
         // Drawn as the stock launcher or not is part of it too: the same package can be either.
         val stamp = runCatching { pm.getPackageInfo(pkg, 0).lastUpdateTime }.getOrDefault(0L) + CustomIcons.stamp(pkg) +

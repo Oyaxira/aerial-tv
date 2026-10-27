@@ -235,4 +235,13 @@
     <string name="st_play_hint">Тыныштықта: жоғарғы қатарда 10 секундтан кейін; кез келген түйме тоқтатады. Әрдайым: түймелер тоқтатпайды, фон сәл күңгірттенеді; төмендегі қолданбаларға өткенде тоқтайды.</string>
     <string name="ss_show_time">Уақыт</string>
     <string name="ss_show_time_hint">Аэрожиын және фото экран қорғауыштарындағы уақыт. Экран күйіп қалмас үшін уақыт пен орын атауы анда-санда сәл жылжиды.</string>
+    <string name="alu_room">Қонақ бөлме</string>
+    <string name="alu_favorites">Таңдаулылар</string>
+    <string name="alu_system_tools">Жүйелік құралдар</string>
+    <string name="alu_all_apps">Барлық қолданбалар</string>
+    <string name="alu_open_hint">OK — ашу · Ұстау — реттеу</string>
+    <string name="alu_browse_hint">Төмен — барлық қолданбалар</string>
+    <string name="alu_connected">Қосылған</string>
+    <string name="alu_offline">Желі жоқ</string>
+    <string name="alu_settings">Баптаулар</string>
 </resources>

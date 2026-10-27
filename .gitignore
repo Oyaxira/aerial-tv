@@ -5,6 +5,9 @@ local.properties
 *.iml
 .kotlin/
 
+# Local agent execution artifacts, never project source.
+.pi-subagents/
+
 # Machine- and household-specific: TV addresses, signing key. Hand over privately.
 local/
 .DS_Store

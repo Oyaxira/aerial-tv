@@ -19,7 +19,11 @@ class Arrangement(val home: List<AppEntry>, val folders: Map<String, List<AppEnt
  * The user's arrangement, keyed by package name: tile order, folders and hidden apps. A folder
  * holds its place in the order by its key; an app in a folder is not in the order itself.
  */
-class LayoutStore(context: Context) {
+class LayoutStore(
+    context: Context,
+    private val initialFavorites: List<String>? = null,
+    private val defaultFolderName: String? = null,
+) {
     private val prefs = context.getSharedPreferences("layout", Context.MODE_PRIVATE)
 
     private var order: List<String> =
@@ -36,8 +40,21 @@ class LayoutStore(context: Context) {
     fun arrange(all: List<AppEntry>, folderTile: (Folder, List<AppEntry>) -> AppEntry): Arrangement {
         val byKey = all.associateBy { it.key }
         if (!initialized) {
-            order = all.sortedWith(Defaults.comparator).map { it.key }
-            hidden = Defaults.hidden(byKey.keys)
+            val customDefaults = initialFavorites != null && defaultFolderName != null
+            if (customDefaults && all.isEmpty()) return Arrangement(emptyList(), emptyMap(), emptyList())
+            if (customDefaults) {
+                val preferred = requireNotNull(initialFavorites)
+                val favorites = preferred.filter { it in byKey }
+                val tools = all.filter { !it.removable && it.key !in preferred && !it.key.startsWith(SOURCE_KEY_PREFIX) }.map { it.key }
+                val folder = Folder("initial-tools", requireNotNull(defaultFolderName), tools)
+                folders = if (tools.isEmpty()) emptyMap() else mapOf(folder.id to folder)
+                order = favorites + (if (tools.isEmpty()) emptyList() else listOf(folder.key)) +
+                    all.map { it.key }.filter { it !in favorites && it !in tools }
+                hidden = emptySet()
+            } else {
+                order = all.sortedWith(Defaults.comparator).map { it.key }
+                hidden = Defaults.hidden(byKey.keys)
+            }
             initialized = true
         }
         val known = order.toHashSet().apply { folders.values.forEach { addAll(it.apps) } }

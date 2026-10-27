@@ -71,12 +71,14 @@ fun Pressable(
     focusRequester: FocusRequester? = null,
     focusedScale: Float = 1.06f,
     onKey: ((KeyEvent) -> Boolean)? = null,
+    onLongClick: (() -> Unit)? = null,
     content: @Composable BoxScope.(PressState) -> Unit,
 ) {
     val state = remember { PressState() }
     val ownRequester = remember { FocusRequester() }
     val requester = focusRequester ?: ownRequester
     val click by rememberUpdatedState(onClick)
+    val longClick by rememberUpdatedState(onLongClick)
     val reduced = LocalReducedMotion.current
     val scale by animateFloatAsState(
         targetValue = when {
@@ -102,6 +104,7 @@ fun Pressable(
             .pointerInput(enabled) {
                 if (!enabled) return@pointerInput
                 detectTapGestures(
+                    onLongPress = if (onLongClick != null) { _ -> longClick?.invoke() } else null,
                     onPress = {
                         state.pressed = true
                         tryAwaitRelease()

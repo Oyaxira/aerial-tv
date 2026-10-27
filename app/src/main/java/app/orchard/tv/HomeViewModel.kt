@@ -11,6 +11,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.geometry.Rect
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import app.orchard.tv.apps.AluHome
 import app.orchard.tv.apps.AppCatalog
 import app.orchard.tv.apps.AppEntry
 import app.orchard.tv.apps.AppNames
@@ -71,7 +72,11 @@ private val BOOT_CATCH_UP_MS = listOf(60_000L, 180_000L)
 
 class HomeViewModel(app: Application) : AndroidViewModel(app) {
     private val context get() = getApplication<Application>()
-    private val store = LayoutStore(app)
+    private val store = LayoutStore(
+        app,
+        initialFavorites = if (BuildConfig.ALU_BUILD) AluHome.favorites else null,
+        defaultFolderName = if (BuildConfig.ALU_BUILD) app.getString(R.string.alu_system_tools) else null,
+    )
     private var all: List<AppEntry> = emptyList()
 
     var apps by mutableStateOf<List<AppEntry>>(emptyList()); private set
@@ -147,6 +152,8 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
      * few seconds in, when Home Guard would have bound if it were on.
      */
     private fun offerSetupOnce() {
+        // The personal variant is installed and assigned HOME separately by its owner.
+        if (BuildConfig.ALU_BUILD) return
         val prefs = context.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE)
         if (prefs.getBoolean("setup_offered", false)) return
         viewModelScope.launch {
@@ -221,6 +228,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Ready-made pictures for the apps just loaded, in the background; Home reloads when some arrive. */
     private fun refreshIconLibrary() {
+        if (BuildConfig.ALU_BUILD) return
         val installed = all.mapTo(HashSet()) { it.packageName }
         viewModelScope.launch {
             if (IconLibrary.refresh(installed)) IconLibrary.changed()
@@ -242,6 +250,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
      * tile otherwise makes the first time it is focused, on the main thread.
      */
     private fun prepareFaces() {
+        if (BuildConfig.ALU_BUILD) return
         val shown = apps + folderApps.values.flatten()
         val row = apps.take(5)
         facesJob?.cancel()

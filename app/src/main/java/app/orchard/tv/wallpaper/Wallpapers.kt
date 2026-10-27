@@ -163,6 +163,7 @@ object Wallpapers {
             screenW = (maxOf(it.widthPixels, it.heightPixels) * scale).roundToInt()
             screenH = (minOf(it.widthPixels, it.heightPixels) * scale).roundToInt()
         }
+        if (BuildConfig.ALU_BUILD) AluWallpaper.seed(app)
         selectedId = (prefs.getString("selected", LATEST_DAILY) ?: LATEST_DAILY)
             // A built-in wallpaper from before the Mac-style set: its nearest one now.
             .let { if (it.startsWith("grad:")) "grad:" + Gradients.currentKey(it.removePrefix("grad:")) else it }
@@ -307,7 +308,7 @@ object Wallpapers {
                 // Frosted from the picture before the home shading: the glass sits low on the
                 // screen, where the shading is darkest, and would read as a grey slab.
                 val frost = picture?.let(Images::frost)
-                picture?.let(Images::shadeForHome) to frost
+                picture?.let { Images.shadeForHome(it, personal = BuildConfig.ALU_BUILD) } to frost
             }
             backdrop = bmp?.asImageBitmap()
             frosted = frost?.asImageBitmap()
@@ -333,7 +334,9 @@ object Wallpapers {
             WallpaperKind.Video -> videoFrame.lastModified()
             else -> 0L
         }
-        return "${wp.id}|$stamp|${screenW}x$screenH|${BuildConfig.VERSION_CODE}"
+        // Invalidate only the generated personal backdrop; keep the owner's photos and selection.
+        val treatment = if (BuildConfig.ALU_BUILD) "|alu-shade-2" else ""
+        return "${wp.id}|$stamp|${screenW}x$screenH|${BuildConfig.VERSION_CODE}$treatment"
     }
 
     /**
@@ -405,7 +408,7 @@ object Wallpapers {
                 .onFailure { Log.w(TAG, "could not keep the film's frame", it) }
             // Frosted before shading, which draws on the frame itself.
             val frost = Images.frost(frame)
-            Images.shadeForHome(frame) to frost
+            Images.shadeForHome(frame, personal = BuildConfig.ALU_BUILD) to frost
         }
         synchronized(thumbs) { thumbs.remove(id) }
         backdrop = bmp.asImageBitmap()

@@ -822,10 +822,10 @@ class MainActivity : ComponentActivity() {
         private const val BOOT_APP_NETWORK_WAIT_MS = 20_000L
 
         /** `adb shell am start -a app.orchard.tv.PREVIEW_SCREENSAVER -n app.orchard.tv/.MainActivity` */
-        const val ACTION_PREVIEW_SCREENSAVER = "app.orchard.tv.PREVIEW_SCREENSAVER"
+        const val ACTION_PREVIEW_SCREENSAVER = BuildConfig.APPLICATION_ID + ".PREVIEW_SCREENSAVER"
 
         /** Set by Home Guard when it brings Aerial back after standby or a boot. */
-        const val EXTRA_WOKE = "app.orchard.tv.WOKE"
+        const val EXTRA_WOKE = BuildConfig.APPLICATION_ID + ".WOKE"
 
         /** How long after the key that woke a screensaver other keys are still taken as waking it. */
         const val WAKE_QUIET_MS = 400L

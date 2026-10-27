@@ -235,4 +235,13 @@
     <string name="st_play_hint">У спокої: через 10 секунд на верхньому ряду; будь-яка кнопка зупиняє. Завжди: кнопки не зупиняють, тло трохи затемнене; зупиняється, коли ви переходите до застосунків нижче.</string>
     <string name="ss_show_time">Час</string>
     <string name="ss_show_time_hint">Час на заставках з аерозйомкою і фото. Час і назва місця час від часу трохи зсуваються, щоб екран не вигорав.</string>
+    <string name="alu_room">Вітальня</string>
+    <string name="alu_favorites">Обране</string>
+    <string name="alu_system_tools">Системні інструменти</string>
+    <string name="alu_all_apps">Усі застосунки</string>
+    <string name="alu_open_hint">OK — відкрити · Утримувати — впорядкувати</string>
+    <string name="alu_browse_hint">Вниз — усі застосунки</string>
+    <string name="alu_connected">Підключено</string>
+    <string name="alu_offline">Немає мережі</string>
+    <string name="alu_settings">Налаштування</string>
 </resources>

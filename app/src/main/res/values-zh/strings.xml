@@ -242,4 +242,13 @@
     <string name="st_play_hint">静止时：在第一排停 10 秒后播放，按键停下。一直：按键不停，背景压暗一点；进入下面的 App 时停下。</string>
     <string name="ss_show_time">时间</string>
     <string name="ss_show_time_hint">航拍和照片屏保上的时间。时间和地名会不时挪一点位置，避免烧屏。</string>
+    <string name="alu_room">客厅</string>
+    <string name="alu_favorites">常用应用</string>
+    <string name="alu_system_tools">系统工具</string>
+    <string name="alu_all_apps">全部应用</string>
+    <string name="alu_open_hint">OK 打开 · 长按整理</string>
+    <string name="alu_browse_hint">向下浏览全部应用</string>
+    <string name="alu_connected">已连接</string>
+    <string name="alu_offline">未连接</string>
+    <string name="alu_settings">设置</string>
 </resources>

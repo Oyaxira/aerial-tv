@@ -886,6 +886,8 @@ class HomeGuardService : AccessibilityService() {
             // Negative priority entries are fallbacks shown only while nothing else can be Home,
             // except the ones a firmware does start.
             .filter { it.activityInfo.packageName != packageName }
+            // A sibling Aerial is a rollback app, never a firmware launcher to take over.
+            .filter { !app.orchard.tv.BuildConfig.ALU_BUILD || it.activityInfo.packageName != "app.orchard.tv" }
             .filter { it.priority >= 0 || it.activityInfo.name == LOW_PRIORITY_HOMES[it.activityInfo.packageName] }
             .filter { it.activityInfo.packageName !in INPUT_PLAYERS || it.activityInfo.packageName == resolved }
             .filter { it.activityInfo.packageName !in NOT_LAUNCHERS }

@@ -1411,6 +1411,9 @@ window.addEventListener('drop', e => {
 /* More tab: focus style and weather. */
 const weatherNames = { clear: t('wx_clear'), partlycloudy: t('wx_partlycloudy'), cloudy: t('wx_cloudy'), fog: t('wx_fog'), rain: t('wx_rain'), snow: t('wx_snow'), thunder: t('wx_thunder') };
 function renderMore() {
+  // The personal design has one fixed focus treatment, on the TV and on the phone page.
+  $('#focus').style.display = state.fixedHome ? 'none' : '';
+  document.querySelector('h2[data-i18n="focus"]').style.display = state.fixedHome ? 'none' : '';
   $('#swWeather').checked = state.showWeather !== false;
   document.querySelectorAll('#focus [data-style]').forEach(b => b.setAttribute('aria-checked', b.dataset.style === state.focusStyle ? 'true' : 'false'));
   const w = state.weather || {};

@@ -7,6 +7,7 @@ import android.os.SystemClock
 import android.view.KeyEvent as NativeKeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -47,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
@@ -68,6 +70,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import app.orchard.tv.BuildConfig
+import app.orchard.tv.apps.AluHome
+import app.orchard.tv.apps.TileArtFactory
 import app.orchard.tv.CcPage
 import app.orchard.tv.apps.SourceLooks
 import app.orchard.tv.HomeViewModel
@@ -99,7 +104,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-private const val COLUMNS = 5
+private val COLUMNS = if (BuildConfig.ALU_BUILD) 6 else 5
 
 /** The plate's distance from the bottom edge with no second row peeking: as from the sides. */
 private val PlateMarginBottom = 30.dp
@@ -113,19 +118,19 @@ private object ControlCenterWarmed { var done = false }
 private const val CC_WARM_AFTER_MS = 3_000L
 
 private val GridMargin = 56.dp
-private val GridGap = 28.dp
+private val GridGap = if (BuildConfig.ALU_BUILD) 16.dp else 28.dp
 
 /** A tile's width at rest on a screen [screenW] wide; TileFaces works out the same size. */
 internal fun restTileWidth(screenW: Dp): Dp = (screenW - GridMargin * 2 - GridGap * (COLUMNS - 1)) / COLUMNS
 
 /** Grid geometry for the screen at hand. On a 1080p TV this is a 960×540 dp canvas. */
-private class GridMetrics(screenW: Dp, screenH: Dp, oneRow: Boolean, plateNames: Boolean, peek: Boolean, plate: Boolean) {
+private class GridMetrics(screenW: Dp, screenH: Dp, oneRow: Boolean, plateNames: Boolean, peek: Boolean, plate: Boolean, browsing: Boolean = false) {
     val margin = GridMargin
     val gap = GridGap
     val tileW = restTileWidth(screenW)
-    val tileH = tileW * 9f / 16f
+    val tileH = if (BuildConfig.ALU_BUILD) 107.dp else tileW * 9f / 16f
     val pitchX = tileW + gap
-    val pitchY = tileH + 50.dp
+    val pitchY = tileH + if (BuildConfig.ALU_BUILD) 22.dp else 50.dp
 
     /**
      * Extra room under the top row while it is the one in focus, for names on a plate grown to
@@ -141,6 +146,7 @@ private class GridMetrics(screenW: Dp, screenH: Dp, oneRow: Boolean, plateNames:
      * well showed the second row nearly three times as far (issue #540).
      */
     val topRowY = when {
+        BuildConfig.ALU_BUILD -> if (browsing) 130.dp else screenH - 164.dp
         !oneRow -> screenH * 0.555f
         peek -> screenH - pitchY - 12.dp - firstGap
         // Nothing peeks under the row, so it goes as low as it fits: the plate as far from the
@@ -158,7 +164,7 @@ private class GridMetrics(screenW: Dp, screenH: Dp, oneRow: Boolean, plateNames:
     val clockY = 80.dp
 
     /** Where a row rests once you go down into the grid: the row above stays in view. */
-    val restY = screenH * 0.37f
+    val restY = if (BuildConfig.ALU_BUILD) 130.dp else screenH * 0.37f
     val screenH = screenH
 
     /**
@@ -174,6 +180,9 @@ private class GridMetrics(screenW: Dp, screenH: Dp, oneRow: Boolean, plateNames:
 
     fun scrollFor(row: Int, rows: Int): Dp {
         if (row <= 0) return 0.dp
+        if (BuildConfig.ALU_BUILD) {
+            return (topRowY + pitchY * row + tileH + 4.dp - (screenH - 28.dp)).coerceAtLeast(0.dp)
+        }
         val wanted = topRowY + pitchY * row - restY
         val bottom = topRowY + pitchY * rows + 36.dp - screenH
         return minOf(wanted, maxOf(bottom, topRowY + pitchY - restY))
@@ -201,13 +210,38 @@ fun HomeScreen(
     onUninstall: (String) -> Unit,
     onStartScreensaver: () -> Unit,
 ) {
-    val apps = vm.apps
+    var browsing by remember { mutableStateOf(false) }
+    var browseFocus by remember { mutableStateOf<Int?>(null) }
+    val allLabel = stringResource(R.string.alu_all_apps)
+    val allEntry = remember(allLabel) {
+        if (!BuildConfig.ALU_BUILD) null else AppEntry(AluHome.ALL_APPS, allLabel, android.content.ComponentName("navigation", "all"),
+            false, false, TileArtFactory.forFolder(emptyList()))
+    }
+    val apps = if (BuildConfig.ALU_BUILD && !browsing && vm.apps.isNotEmpty()) AluHome.shelf(vm.apps, requireNotNull(allEntry)) else vm.apps
     val overlay = vm.overlay
     val moving = vm.movingKey
     val reduced = LocalReducedMotion.current
     val density = LocalDensity.current
     val now by rememberNow()
     val scope = rememberCoroutineScope()
+    val photoCamera = remember { Animatable(0f) }
+    val photoMotion = BuildConfig.ALU_BUILD && !reduced && !AerialSettings.lite &&
+        (Wallpapers.selectedId.startsWith("photo:") || Wallpapers.selectedId.startsWith("daily:"))
+    val cameraRunning = photoMotion && vm.resumed && overlay == Overlay.None &&
+        !vm.screensaverVisible && !browsing && moving == null
+    LaunchedEffect(cameraRunning) {
+        if (!cameraRunning) return@LaunchedEffect
+        // Cancellation holds the current phase; reopening Home continues without a camera jump.
+        // The periodic sine/cosine transform has identical positions and velocities at either end.
+        while (true) {
+            photoCamera.animateTo(1f, tween(((1f - photoCamera.value) * AluCamera.CYCLE_MS).roundToInt().coerceAtLeast(1), easing = LinearEasing))
+            photoCamera.snapTo(0f)
+        }
+    }
+    val personalChrome by animateFloatAsState(
+        if (vm.screensaverVisible) 0f else 1f,
+        tween(if (reduced) 0 else 450, easing = Motion.EaseOut), label = "alu-chrome",
+    )
 
     val requesters = remember { HashMap<String, FocusRequester>() }
     fun requester(key: String) = requesters.getOrPut(key) { FocusRequester() }
@@ -330,6 +364,27 @@ fun HomeScreen(
         runCatching { requester(app.key).requestFocus() }
     }
 
+    fun openGrid(index: Int = 0) {
+        focusedKey = vm.apps.getOrNull(index)?.key
+        lastFocusedIndex = index
+        pillFocused = false
+        browsing = true
+        browseFocus = index
+    }
+    fun closeGrid() {
+        focusedKey = vm.apps.firstOrNull()?.key
+        lastFocusedIndex = 0
+        pillFocused = false
+        browsing = false
+        browseFocus = 0
+    }
+    LaunchedEffect(browsing, browseFocus) {
+        val target = browseFocus ?: return@LaunchedEffect
+        withFrameNanos { }
+        focusApp(target)
+        browseFocus = null
+    }
+
     // First focus once the apps are in; afterwards, put focus back wherever it was when an overlay closes.
     LaunchedEffect(vm.loaded, overlay) {
         if (!vm.loaded || overlay != Overlay.None) return@LaunchedEffect
@@ -360,6 +415,7 @@ fun HomeScreen(
     // Moving starts from the menu, which is still on screen for a frame: focus the app once it is gone.
     LaunchedEffect(moving) {
         val key = moving ?: return@LaunchedEffect
+        if (BuildConfig.ALU_BUILD) browsing = true
         withFrameNanos { }
         runCatching { requester(key).requestFocus() }
     }
@@ -368,6 +424,7 @@ fun HomeScreen(
         if (windowFocused && vm.homeResetPending && vm.loaded) {
             withFrameNanos { }
             dragged = false
+            if (BuildConfig.ALU_BUILD) closeGrid()
             focusApp(0)
             vm.homeResetPending = false
         }
@@ -379,7 +436,8 @@ fun HomeScreen(
         val scrolled = dragged && scroll.value > 1f
         dragged = false
         // Handled even when that is turned off: unhandled, Back would close Home itself.
-        if (focusedRow > 0 || scrolled) focusApp(focusedIndex.coerceAtLeast(0) % COLUMNS)
+        if (BuildConfig.ALU_BUILD && browsing) closeGrid()
+        else if (focusedRow > 0 || scrolled) focusApp(focusedIndex.coerceAtLeast(0) % COLUMNS)
         else if (AerialSettings.backStartsScreensaver) onStartScreensaver()
     }
 
@@ -409,6 +467,28 @@ fun HomeScreen(
                     return@onPreviewKeyEvent true
                 }
                 if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                if (BuildConfig.ALU_BUILD && gridEnabled && !pillFocused && focusedIndex >= 0) {
+                    when (e.nativeKeyEvent.keyCode) {
+                        NativeKeyEvent.KEYCODE_DPAD_DOWN -> {
+                            if (!browsing) openGrid(focusedIndex.coerceAtMost(vm.apps.lastIndex.coerceAtLeast(0)))
+                            else focusApp(AluHome.verticalTarget(focusedIndex, apps.size, COLUMNS, true))
+                            return@onPreviewKeyEvent true
+                        }
+                        NativeKeyEvent.KEYCODE_DPAD_UP -> {
+                            if (focusedRow == 0) pillRequester.requestFocus()
+                            else focusApp(AluHome.verticalTarget(focusedIndex, apps.size, COLUMNS, false))
+                            return@onPreviewKeyEvent true
+                        }
+                        NativeKeyEvent.KEYCODE_DPAD_LEFT -> {
+                            if (focusedIndex % COLUMNS > 0) focusApp(focusedIndex - 1)
+                            return@onPreviewKeyEvent true
+                        }
+                        NativeKeyEvent.KEYCODE_DPAD_RIGHT -> {
+                            if (focusedIndex % COLUMNS < COLUMNS - 1) focusApp((focusedIndex + 1).coerceAtMost(apps.lastIndex))
+                            return@onPreviewKeyEvent true
+                        }
+                    }
+                }
                 when (e.nativeKeyEvent.keyCode) {
                     NativeKeyEvent.KEYCODE_MENU -> {
                         // On an app tile, Menu opens that app's menu (AppTile): remotes whose held
@@ -433,20 +513,20 @@ fun HomeScreen(
     ) {
         val rows = (apps.size + COLUMNS - 1) / COLUMNS
         // With a single row of apps the two-row layout would leave the bottom of the screen empty.
-        val oneRow = AerialSettings.oneRowHome || rows <= 1
+        val oneRow = BuildConfig.ALU_BUILD || AerialSettings.oneRowHome || rows <= 1
         // In two rows the second is on screen already: down to it stays on the shelf, under the
         // same picture and plate, and only the row after it goes into the grid (issue #633: the
         // grid's frosted picture flashed up on the way to an app in the second row).
         val inGrid = focusedRow >= if (oneRow) 1 else 2
         val saverFadeOffscreen = remember { DiagLog.saverFadeOffscreen(appContext) }
         // With every name shown, the top row's go on its glass plate, which grows to hold them.
-        val plateNames = AerialSettings.showAllNames && AerialSettings.homePlate
-        val peek = AerialSettings.peekNextRow
-        val hasPlate = AerialSettings.homePlate
-        val metrics = remember(maxWidth, maxHeight, oneRow, plateNames, peek, hasPlate) {
-            GridMetrics(maxWidth, maxHeight, oneRow, plateNames, peek, hasPlate)
+        val plateNames = !BuildConfig.ALU_BUILD && AerialSettings.showAllNames && AerialSettings.homePlate
+        val peek = !BuildConfig.ALU_BUILD && AerialSettings.peekNextRow
+        val hasPlate = !BuildConfig.ALU_BUILD && AerialSettings.homePlate
+        val metrics = remember(maxWidth, maxHeight, oneRow, plateNames, peek, hasPlate, browsing) {
+            GridMetrics(maxWidth, maxHeight, oneRow, plateNames, peek, hasPlate, browsing)
         }
-        val collapsePx = with(density) { (metrics.topRowY - metrics.restY).toPx() }
+        val collapsePx = with(density) { (metrics.topRowY - metrics.restY).coerceAtLeast(1.dp).toPx() }
 
         val target = with(density) { metrics.scrollFor(if (inGrid) focusedRow else 0, rows).toPx() }
         val lift by animateFloatAsState(
@@ -457,12 +537,18 @@ fun HomeScreen(
         LaunchedEffect(maxScroll) { scroll.updateBounds(0f, maxScroll) }
         val pastShelf by remember(collapsePx) { derivedStateOf { scroll.value > collapsePx / 2 } }
         val decay = rememberSplineBasedDecay<Float>()
-        LaunchedEffect(target, dragged) {
+        LaunchedEffect(target, dragged, focusedRow, browsing, metrics) {
             if (dragged) return@LaunchedEffect
-            if (reduced) scroll.snapTo(target)
+            val wanted = if (BuildConfig.ALU_BUILD && browsing) with(density) {
+                val rowTop = metrics.topRowY + metrics.pitchY * focusedRow
+                AluHome.scrollToReveal(scroll.value, (rowTop - 10.dp).toPx(),
+                    (rowTop + metrics.tileH + 4.dp).toPx(), 120.dp.toPx(),
+                    (metrics.screenH - 28.dp).toPx(), maxScroll)
+            } else target
+            if (reduced) scroll.snapTo(wanted)
             // A spring keeps its velocity when a quick second press retargets it mid-flight. At 170
             // a row took about 300 ms to get 90% of the way and half a second to settle.
-            else scroll.animateTo(target, spring(dampingRatio = 1f, stiffness = 280f))
+            else scroll.animateTo(wanted, spring(dampingRatio = 1f, stiffness = 280f))
         }
 
         // The folder open, or under its app's menu.
@@ -531,7 +617,7 @@ fun HomeScreen(
         ) {
             // The glass plate under the top row (tvOS 26), the row's full width however few apps
             // there are, which sit at its left: sized to three apps it read as a stray panel (#284).
-            val plate = if (apps.isEmpty() || !AerialSettings.homePlate) null else with(density) {
+            val plate = if (apps.isEmpty() || !hasPlate) null else with(density) {
                 Rect(
                     (metrics.margin - PlatePadH).toPx(),
                     (metrics.topRowY - PlatePadV).toPx(),
@@ -542,7 +628,7 @@ fun HomeScreen(
             // A moving wallpaper's film, under everything; it moves only on the top row with
             // nothing over it; the owner's videos there only once Home is still unless set to keep moving.
             val filmMoves = vm.resumed && overlay == Overlay.None && !vm.screensaverVisible && !pastShelf &&
-                focusedRow == 0 && moving == null
+                focusedRow == 0 && moving == null && (!BuildConfig.ALU_BUILD || !browsing)
             val sourceInput = Wallpapers.sourceInput
             when {
                 Wallpapers.selectedId == Wallpapers.LIVE -> LiveWallpaper(
@@ -595,134 +681,156 @@ fun HomeScreen(
                 wallpaper = Wallpapers.selectedId,
                 glassAwaitsStop = Wallpapers.selectedId == Wallpapers.LIVE && clipGlass == null,
                 gridGlass = clipGlass,
+                photoPhase = { if (photoMotion) photoCamera.value else null },
+                personalGrid = BuildConfig.ALU_BUILD && browsing && !vm.screensaverVisible,
             )
 
             // Before Android 7 there is no picture of Home under Control Center (issue #466), so the
             // GPU draws every tile again under the panel each frame. Lite there lets the clock and
             // the tiles fade out under the panel's veil; the wallpaper and plate stay.
             val shedUnderPanel = Build.VERSION.SDK_INT < Build.VERSION_CODES.N && AerialSettings.lite
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .offset { IntOffset(0, -scroll.value.roundToInt()) }
-                    .then(
-                        if (shedUnderPanel) Modifier.graphicsLayer {
-                            alpha = 1f - backdropVeil
-                            compositingStrategy = CompositingStrategy.ModulateAlpha
-                        } else Modifier,
-                    ),
-            ) {
-                val clockRight = AerialSettings.clockRight
-                // The large clock stands over the top row; the small one is the time and weather in
-                // one line, top left or beside the pill, so the wallpaper keeps the screen.
-                if (AerialSettings.largeClock) {
-                    ShelfClock(
-                        now = now,
-                        alignEnd = clockRight,
-                        modifier = Modifier
-                            .align(if (clockRight) Alignment.TopEnd else Alignment.TopStart)
-                            .padding(horizontal = metrics.margin)
-                            .padding(top = metrics.clockY)
-                            // No offscreen buffer while it fades: it would be the clock's capBox, and the
-                            // Chinese, the icon and the shadows above and below it were cut off (#727).
-                            .graphicsLayer {
-                                alpha = 1f - (scroll.value / collapsePx * 1.6f).coerceIn(0f, 1f)
+            if (BuildConfig.ALU_BUILD) {
+                AluClock(now, Modifier.padding(start = 56.dp, top = 44.dp).graphicsLayer {
+                    alpha = if (browsing) 0f else personalChrome
+                })
+                BasicText(stringResource(if (browsing) R.string.alu_all_apps else R.string.alu_favorites),
+                    style = Type.Body,
+                    modifier = Modifier.padding(start = 56.dp, top = if (browsing) 88.dp else metrics.screenH - 190.dp)
+                        .graphicsLayer { alpha = personalChrome })
+            }
+            // Clip only the scrolling grid: its title and the status pill stay outside the viewport.
+            Box(Modifier.fillMaxSize().drawWithContent {
+                if (BuildConfig.ALU_BUILD && browsing) {
+                    clipRect(top = 120.dp.toPx(), bottom = size.height - 28.dp.toPx()) {
+                        this@drawWithContent.drawContent()
+                    }
+                } else drawContent()
+            }) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .offset { IntOffset(0, -scroll.value.roundToInt()) }
+                        .then(
+                            if (shedUnderPanel) Modifier.graphicsLayer {
+                                alpha = 1f - backdropVeil
                                 compositingStrategy = CompositingStrategy.ModulateAlpha
-                            },
-                        toSaver = { clockToSaver.value },
-                        saving = vm.screensaverVisible,
-                        away = carrying,
-                    )
-                } else if (!clockRight) {
-                    CornerClock(
-                        now = now,
-                        modifier = Modifier
-                            .padding(start = metrics.margin, top = 28.dp)
-                            .graphicsLayer {
-                                alpha = 1f - (scroll.value / collapsePx * 1.6f).coerceIn(0f, 1f)
-                                compositingStrategy = CompositingStrategy.ModulateAlpha
-                            },
-                        toSaver = { toSaver.value },
-                        saving = vm.screensaverVisible,
-                    )
-                }
-
-                // In one row with no peek, the rows below stay out of sight until Home scrolls to them.
-                val hideBelow = oneRow && !peek
-                apps.forEachIndexed { index, app ->
-                    key(app.key) {
-                        val (x, y) = metrics.slot(index, onTop = !inGrid)
-                        val slotPx = with(density) { IntOffset(x.roundToPx(), y.roundToPx()) }
-                        val slot = animateIntOffsetAsState(
-                            slotPx,
-                            spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow),
-                            label = "slot",
-                        )
-                        AppTile(
-                            app = app,
-                            width = metrics.tileW,
-                            height = metrics.tileH,
-                            focusRequester = requester(app.key),
-                            enabled = gridEnabled,
-                            moving = moving == app.key,
-                            appearDelayMs = (index * 28).coerceAtMost(320),
-                            onFocused = {
-                                focusedKey = app.key
-                                lastFocusedIndex = index
-                                pillFocused = false
-                            },
-                            onClick = { bounds ->
-                                val mover = moving
-                                if (mover == null) {
-                                    val folder = app.folder
-                                    if (folder == null) onLaunch(app, bounds)
-                                    else {
-                                        // Closing the folder comes back to its tile.
-                                        focusAfterOverlay = app.key
-                                        indexAfterOverlay = index
-                                        vm.overlay = Overlay.Folder(folder.id)
-                                    }
-                                }
-                                // While moving, tapping a tile puts the app there; tapping the app
-                                // itself is done.
-                                else if (mover == app.key) vm.endMove()
-                                else {
-                                    vm.moveBy(index - apps.indexOfFirst { it.key == mover })
-                                    runCatching { requester(mover).requestFocus() }
-                                }
-                            },
-                            onLongPress = { bounds ->
-                                if (moving == null) {
-                                    focusAfterOverlay = app.key
-                                    indexAfterOverlay = index
-                                    vm.overlay = Overlay.AppMenu(app.key, bounds ?: Rect.Zero)
-                                }
-                            },
+                            } else Modifier,
+                        ),
+                ) {
+                    val clockRight = AerialSettings.clockRight
+                    // The large clock stands over the top row; the small one is the time and weather in
+                    // one line, top left or beside the pill, so the wallpaper keeps the screen.
+                    if (!BuildConfig.ALU_BUILD && AerialSettings.largeClock) {
+                        ShelfClock(
+                            now = now,
+                            alignEnd = clockRight,
                             modifier = Modifier
-                                // Lifted on the shelf with the plate; the clock above stays put.
-                                .offset { slot.value - IntOffset(0, lift.roundToInt()) }
-                                .then(
-                                    if (hideBelow && index >= COLUMNS) Modifier.graphicsLayer {
-                                        alpha = (scroll.value / collapsePx * 2.5f).coerceIn(0f, 1f)
-                                        // No offscreen buffer: it would clip the focus frame to the tile.
-                                        compositingStrategy = CompositingStrategy.ModulateAlpha
-                                    } else Modifier,
-                                )
-                                // Into the screensaver, the apps go left to right, sinking a little.
+                                .align(if (clockRight) Alignment.TopEnd else Alignment.TopStart)
+                                .padding(horizontal = metrics.margin)
+                                .padding(top = metrics.clockY)
+                                // No offscreen buffer while it fades: it would be the clock's capBox, and the
+                                // Chinese, the icon and the shadows above and below it were cut off (#727).
                                 .graphicsLayer {
-                                    val f = ((toSaver.value - 0.05f * (index % COLUMNS)) / 0.6f).coerceIn(0f, 1f)
-                                    if (f > 0f) {
-                                        alpha = 1f - f
-                                        translationY = f * 18.dp.toPx()
-                                        compositingStrategy = if (saverFadeOffscreen) CompositingStrategy.Offscreen else CompositingStrategy.ModulateAlpha
+                                    alpha = 1f - (scroll.value / collapsePx * 1.6f).coerceIn(0f, 1f)
+                                    compositingStrategy = CompositingStrategy.ModulateAlpha
+                                },
+                            toSaver = { clockToSaver.value },
+                            saving = vm.screensaverVisible,
+                            away = carrying,
+                        )
+                    } else if (!BuildConfig.ALU_BUILD && !clockRight) {
+                        CornerClock(
+                            now = now,
+                            modifier = Modifier
+                                .padding(start = metrics.margin, top = 28.dp)
+                                .graphicsLayer {
+                                    alpha = 1f - (scroll.value / collapsePx * 1.6f).coerceIn(0f, 1f)
+                                    compositingStrategy = CompositingStrategy.ModulateAlpha
+                                },
+                            toSaver = { toSaver.value },
+                            saving = vm.screensaverVisible,
+                        )
+                    }
+
+                    // In one row with no peek, the rows below stay out of sight until Home scrolls to them.
+                    val hideBelow = !BuildConfig.ALU_BUILD && oneRow && !peek
+                    apps.forEachIndexed { index, app ->
+                        key(app.key) {
+                            val (x, y) = metrics.slot(index, onTop = !inGrid)
+                            val slotPx = with(density) { IntOffset(x.roundToPx(), y.roundToPx()) }
+                            val slot = animateIntOffsetAsState(
+                                slotPx,
+                                spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow),
+                                label = "slot",
+                            )
+                            AppTile(
+                                app = app,
+                                width = metrics.tileW,
+                                height = metrics.tileH,
+                                focusRequester = requester(app.key),
+                                enabled = gridEnabled,
+                                moving = moving == app.key,
+                                appearDelayMs = (index * 28).coerceAtMost(320),
+                                onFocused = {
+                                    focusedKey = app.key
+                                    lastFocusedIndex = index
+                                    pillFocused = false
+                                },
+                                onClick = { bounds ->
+                                    val mover = moving
+                                    if (app.key == AluHome.ALL_APPS) openGrid()
+                                    else if (mover == null) {
+                                        val folder = app.folder
+                                        if (folder == null) onLaunch(app, bounds)
+                                        else {
+                                            // Closing the folder comes back to its tile.
+                                            focusAfterOverlay = app.key
+                                            indexAfterOverlay = index
+                                            vm.overlay = Overlay.Folder(folder.id)
+                                        }
+                                    }
+                                    // While moving, tapping a tile puts the app there; tapping the app
+                                    // itself is done.
+                                    else if (mover == app.key) vm.endMove()
+                                    else {
+                                        vm.moveBy(index - apps.indexOfFirst { it.key == mover })
+                                        runCatching { requester(mover).requestFocus() }
                                     }
                                 },
-                            rowEnd = index % COLUMNS == COLUMNS - 1 || index == apps.lastIndex,
-                            // On the glass plate only with every name shown (an earlier build showed
-                            // the focused one alone there, but it sat oddly on the glass).
-                            showName = plate == null || index >= COLUMNS || plateNames,
-                            nameOnPlate = plate != null && index < COLUMNS,
-                        )
+                                onLongPress = { bounds ->
+                                    if (moving == null && app.key != AluHome.ALL_APPS) {
+                                        focusAfterOverlay = app.key
+                                        indexAfterOverlay = index
+                                        vm.overlay = Overlay.AppMenu(app.key, bounds ?: Rect.Zero)
+                                    }
+                                },
+                                modifier = Modifier
+                                    // Lifted on the shelf with the plate; the clock above stays put.
+                                    .offset { slot.value - IntOffset(0, lift.roundToInt()) }
+                                    .then(
+                                        if (hideBelow && index >= COLUMNS) Modifier.graphicsLayer {
+                                            alpha = (scroll.value / collapsePx * 2.5f).coerceIn(0f, 1f)
+                                            // No offscreen buffer: it would clip the focus frame to the tile.
+                                            compositingStrategy = CompositingStrategy.ModulateAlpha
+                                        } else Modifier,
+                                    )
+                                    // Into the screensaver, the apps go left to right, sinking a little.
+                                    .graphicsLayer {
+                                        val f = if (BuildConfig.ALU_BUILD) 1f - personalChrome
+                                            else ((toSaver.value - 0.05f * (index % COLUMNS)) / 0.6f).coerceIn(0f, 1f)
+                                        if (f > 0f) {
+                                            alpha = 1f - f
+                                            translationY = f * 18.dp.toPx()
+                                            compositingStrategy = if (saverFadeOffscreen) CompositingStrategy.Offscreen else CompositingStrategy.ModulateAlpha
+                                        }
+                                    },
+                                rowEnd = index % COLUMNS == COLUMNS - 1 || index == apps.lastIndex,
+                                // On the glass plate only with every name shown (an earlier build showed
+                                // the focused one alone there, but it sat oddly on the glass).
+                                showName = plate == null || index >= COLUMNS || plateNames,
+                                nameOnPlate = plate != null && index < COLUMNS,
+                            )
+                        }
                     }
                 }
             }
@@ -741,7 +849,7 @@ fun HomeScreen(
                 .graphicsLayer { alpha = if (overlay is Overlay.ControlCenter) 0f else 1f },
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (!AerialSettings.largeClock && AerialSettings.clockRight) {
+            if (!BuildConfig.ALU_BUILD && !AerialSettings.largeClock && AerialSettings.clockRight) {
                 CornerClock(
                     now = now,
                     modifier = Modifier
@@ -757,7 +865,7 @@ fun HomeScreen(
             StatusPill(
                 now = now,
                 network = vm.network,
-                showTime = if (dragged) pastShelf else inGrid,
+                showTime = if (BuildConfig.ALU_BUILD) browsing else if (dragged) pastShelf else inGrid,
                 enabled = gridEnabled && moving == null,
                 focusRequester = pillRequester,
                 modifier = Modifier
@@ -768,7 +876,7 @@ fun HomeScreen(
                         if (key != null && apps.indexOfFirst { it.key == key } in 0 until COLUMNS) down = requester(key)
                     }
                     .graphicsLayer {
-                        alpha = 1f - (toSaver.value * 2f).coerceIn(0f, 1f)
+                        alpha = if (BuildConfig.ALU_BUILD) personalChrome else 1f - (toSaver.value * 2f).coerceIn(0f, 1f)
                         // No offscreen buffer: it would cut the focused pill's 8% growth to a box.
                         compositingStrategy = CompositingStrategy.ModulateAlpha
                     },
@@ -789,6 +897,14 @@ fun HomeScreen(
                     vm.overlay = Overlay.ControlCenter()
                 },
             )
+        }
+
+        if (BuildConfig.ALU_BUILD && !browsing && moving == null && overlay == Overlay.None && !vm.screensaverVisible) {
+            Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 56.dp, vertical = 22.dp),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween) {
+                BasicText(stringResource(R.string.alu_open_hint), style = Type.Caption)
+                BasicText(stringResource(R.string.alu_browse_hint), style = Type.Caption)
+            }
         }
 
         AnimatedVisibility(

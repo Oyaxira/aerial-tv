@@ -1,5 +1,7 @@
 package app.orchard.tv.ui.home
 
+import app.orchard.tv.BuildConfig
+
 import android.os.Build
 import android.os.SystemClock
 import android.view.KeyEvent
@@ -232,7 +234,8 @@ private fun FilmCarry(film: LiveFilm, now: LocalDateTime, steps: SharedFlow<Int>
 @Composable
 private fun Labels(caption: String?, now: LocalDateTime, showTime: Boolean = true) {
     // Fades in where Home's own clock has moved to, as the photos cover it.
-    val time by animateFloatAsState(if (showTime) 1f else 0f, tween(2000), label = "time")
+    // Personal Home fades its clock away rather than moving it into the saver corner.
+    val time by animateFloatAsState(if (showTime || BuildConfig.ALU_BUILD) 1f else 0f, tween(2000), label = "time")
     Box(Modifier.fillMaxSize()) {
         Canvas(Modifier.fillMaxSize()) {
             // Just enough shade under the text to read it over bright sky or snow.

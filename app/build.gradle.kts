@@ -7,17 +7,23 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val aluBuild = providers.gradleProperty("aluBuild").orNull == "true"
+
 android {
     namespace = "app.orchard.tv"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "app.orchard.tv"
+        applicationId = if (aluBuild) "app.orchard.tv.alu" else "app.orchard.tv"
+        buildConfigField("boolean", "ALU_BUILD", aluBuild.toString())
+        resValue("string", "revival_account_type", applicationId!!)
+        manifestPlaceholders["appLabel"] = if (aluBuild) "Alu · Aerial" else "@string/app_name"
         // Android 5.0. Compose 1.10 and later need 6.0, so the Compose BOM below stays on 1.9.
         minSdk = 21
         targetSdk = 34
         versionCode = 73
         versionName = "1.60"
+        if (aluBuild) versionNameSuffix = "-alu"
         // `./gradlew -Pdiag ...`: a build for one reporter's TV whose logcat shows no app lines;
         // see system/DiagLog.kt.
         val diag = project.hasProperty("diag")
@@ -42,7 +48,7 @@ android {
     // back to this machine's debug key, which installs fresh but cannot update existing copies.
     val signingProps = rootProject.file("local/signing.properties")
     signingConfigs {
-        if (signingProps.exists()) {
+        if (!aluBuild && signingProps.exists()) {
             val p = Properties().apply { signingProps.inputStream().use { load(it) } }
             create("aerial") {
                 storeFile = rootProject.file("local/" + p.getProperty("storeFile"))
@@ -58,8 +64,14 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.findByName("aerial") ?: signingConfigs.getByName("debug")
+            signingConfig = if (aluBuild) null else signingConfigs.findByName("aerial") ?: signingConfigs.getByName("debug")
         }
+    }
+
+    if (aluBuild) {
+        // Never consult a signing key in the personal build, including debug variants.
+        buildTypes.getByName("debug").signingConfig = null
+        sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/aluAssets"))
     }
 
     compileOptions {
@@ -106,4 +118,15 @@ dependencies {
     // Phone setup page (a tiny LAN web server) and the QR code that opens it.
     implementation("org.nanohttpd:nanohttpd:2.3.1")
     implementation("com.google.zxing:core:3.5.3")
+}
+
+// Only this approved, ignored local artwork enters the personal APK. No local config or keys.
+if (aluBuild) {
+    val artwork = rootProject.file("local/alu-assets/alu-wallpaper.png")
+    check(artwork.isFile) { "Missing approved local/alu-assets/alu-wallpaper.png" }
+    val prepareAluWallpaper by tasks.registering(Copy::class) {
+        from(artwork)
+        into(layout.buildDirectory.dir("generated/aluAssets"))
+    }
+    tasks.named("preBuild").configure { dependsOn(prepareAluWallpaper) }
 }
